@@ -26,6 +26,8 @@ import path from "node:path";
 import readline from "node:readline";
 import { applyGlobalProxyFromEnv } from "./net/proxy.js";
 
+import { playSignal } from "./play_signal.js";
+
 function countVwapCrosses(closes, vwapSeries, lookback) {
   if (closes.length < lookback || vwapSeries.length < lookback) return null;
   let crosses = 0;
@@ -57,6 +59,7 @@ const ANSI = {
   white: "\x1b[97m",
   dim: "\x1b[2m"
 };
+
 
 function screenWidth() {
   const w = Number(process.stdout?.columns);
@@ -395,6 +398,20 @@ async function fetchPolymarketSnapshot() {
   };
 }
 
+async function maybePlaySignal(marketSlug, diff) {
+  if (diff < 200) return;
+
+  //already alerted for this market
+  if (lastAlertedMarket === marketSlug) {
+    return;
+  }
+
+  console.log("🚨 SIGNAL differ by 200");
+  playSignal();
+
+  lastAlertedMarket = marketSlug;
+}
+
 async function main() {
   const binanceStream = startBinanceTradeStream({ symbol: CONFIG.symbol });
   const polymarketLiveStream = startPolymarketChainlinkPriceStream({});
@@ -403,6 +420,7 @@ async function main() {
   let prevSpotPrice = null;
   let prevCurrentPrice = null;
   let priceToBeatState = { slug: null, value: null, setAtMs: null };
+
 
   const header = [
     "timestamp",
@@ -606,6 +624,12 @@ async function main() {
       const ptbDelta = (currentPrice !== null && priceToBeat !== null && Number.isFinite(currentPrice) && Number.isFinite(priceToBeat))
         ? currentPrice - priceToBeat
         : null;
+      const diff = Math.abs(currentPrice - priceToBeat);
+
+      if (diff >= 200) {
+        maybePlaySignal(marketSlug, diff);
+      }
+
       const ptbDeltaColor = ptbDelta === null
         ? ANSI.gray
         : ptbDelta > 0
